@@ -106,6 +106,7 @@ export type RenewalDeal = {
   companyId: string | null;
   companyName: string | null;
   renewalDate: string | null; // ISO YYYY-MM-DD, parsed from HubSpot's renewal_date property
+  closeDate: string | null; // ISO YYYY-MM-DD, parsed from HubSpot's closedate property
 };
 
 type DealSearchResult = {
@@ -124,11 +125,13 @@ type DealSearchResult = {
 export async function fetchRenewal2026Deals(
   pipeline: RenewalPipeline,
 ): Promise<RenewalDeal[]> {
-  // We pull deals in the Renewal Pipeline that match 2026 by EITHER:
-  //   (a) name contains "2026 renewal", or
-  //   (b) renewal_date falls in calendar year 2026.
-  // (b) catches deals like Oceanwide where the name still says "2025" but
-  // the renewal_date has been moved into 2026.
+  // We pull deals in the Renewal Pipeline that match 2026 by ANY of:
+  //   (a) name contains "2026 renewal",
+  //   (b) renewal_date falls in calendar year 2026, or
+  //   (c) closedate falls in calendar year 2026.
+  // (b) and (c) catch deals like Oceanwide where the name says "2025" or
+  // the renewal_date is wrong but the closedate reflects the real 2026
+  // renewal target.
   const dealsById = new Map<string, RenewalDeal>();
 
   const collect = async (extraFilter: Record<string, unknown>) => {
@@ -149,6 +152,7 @@ export async function fetchRenewal2026Deals(
           "hubspot_owner_id",
           "pipeline",
           "renewal_date",
+          "closedate",
         ],
         limit: 100,
         after,
@@ -172,6 +176,7 @@ export async function fetchRenewal2026Deals(
           companyId: null,
           companyName: null,
           renewalDate: parseHubspotDate(d.properties.renewal_date),
+          closeDate: parseHubspotDate(d.properties.closedate),
         });
       }
 
@@ -194,6 +199,12 @@ export async function fetchRenewal2026Deals(
   const dec31_2026 = Date.UTC(2026, 11, 31);
   await collect({
     propertyName: "renewal_date",
+    operator: "BETWEEN",
+    value: String(jan1_2026),
+    highValue: String(dec31_2026),
+  });
+  await collect({
+    propertyName: "closedate",
     operator: "BETWEEN",
     value: String(jan1_2026),
     highValue: String(dec31_2026),

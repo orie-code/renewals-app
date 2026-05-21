@@ -646,20 +646,23 @@ function RenewalDateMatchCell({ account: a }: { account: RenewalAccount }) {
   if (a.renewalDateMatch === "na") {
     return <span className="text-slate-400">—</span>;
   }
+  const sourceLabel = a.matchedDealRenewalDateSource === "closedate" ? "Close date" : "Renewal date";
+  const hsTip = `HubSpot ${sourceLabel}: ${fmtDateShort(a.matchedDealRenewalDate)} · Metabase: ${fmtDateShort(a.renewalDate)}`;
+  const viaClosedate = a.matchedDealRenewalDateSource === "closedate";
   if (a.renewalDateMatch === "match") {
     return (
       <span
-        title={`HubSpot: ${fmtDateShort(a.matchedDealRenewalDate)} · Metabase: ${fmtDateShort(a.renewalDate)}`}
+        title={hsTip}
         className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200"
       >
-        ✓ match
+        ✓ match{viaClosedate && <span className="text-emerald-600/70">· via close date</span>}
       </span>
     );
   }
   if (a.renewalDateMatch === "missing") {
     return (
       <span
-        title={`HubSpot deal has no Renewal Date. Metabase: ${fmtDateShort(a.renewalDate)}`}
+        title={`HubSpot deal has no Renewal Date or Close Date. Metabase: ${fmtDateShort(a.renewalDate)}`}
         className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-200"
       >
         missing date
@@ -668,10 +671,10 @@ function RenewalDateMatchCell({ account: a }: { account: RenewalAccount }) {
   }
   return (
     <span
-      title={`HubSpot: ${fmtDateShort(a.matchedDealRenewalDate)} · Metabase: ${fmtDateShort(a.renewalDate)}`}
+      title={hsTip}
       className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200"
     >
-      ✗ {fmtDateShort(a.matchedDealRenewalDate)}
+      ✗ {fmtDateShort(a.matchedDealRenewalDate)}{viaClosedate && <span className="text-rose-600/70">· via close date</span>}
     </span>
   );
 }
