@@ -219,15 +219,14 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
           <thead className="bg-gray-50 text-left text-gray-600">
             <tr>
               <Th>Company</Th>
-              <Th>Renewal month</Th>
+              <Th>Renewal date</Th>
               <Th className="text-right">ARR</Th>
               <Th>State</Th>
-              <Th>CSM</Th>
-              <Th>Renewal date OK?</Th>
               <Th>Active products</Th>
-              <Th>Renewal date</Th>
-              <Th>Deal stage</Th>
               <Th>HubSpot status</Th>
+              <Th>Renewal date OK?</Th>
+              <Th>Deal stage</Th>
+              <Th>CSM</Th>
             </tr>
           </thead>
           <tbody>
@@ -247,28 +246,10 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
                     a.companyName
                   )}
                 </Td>
-                <Td>{a.renewalMonth ? MONTHS[a.renewalMonth - 1] : "—"}</Td>
+                <Td>{fmtDateShort(a.renewalDate)}</Td>
                 <Td className="text-right">{fmtUsd(a.arr)}</Td>
                 <Td>{a.state ?? "—"}</Td>
-                <Td>{a.csm ?? "—"}</Td>
-                <Td><RenewalDateMatchCell account={a} /></Td>
                 <Td>{a.activeProducts ?? "—"}</Td>
-                <Td>{fmtDateShort(a.renewalDate)}</Td>
-                <Td>
-                  {a.matchedDealStage && a.matchedDealId ? (
-                    <a
-                      href={hubspotDealUrl(a.matchedDealId)}
-                      target="_blank"
-                      rel="noopener"
-                      className="text-blue-700 hover:underline"
-                      title={a.matchedDealName ?? undefined}
-                    >
-                      {a.matchedDealStage}
-                    </a>
-                  ) : (
-                    a.matchedDealStage ?? "—"
-                  )}
-                </Td>
                 <Td>
                   {a.status === "covered" ? (
                     a.matchedDealId ? (
@@ -304,11 +285,28 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
                     </span>
                   )}
                 </Td>
+                <Td><RenewalDateMatchCell account={a} /></Td>
+                <Td>
+                  {a.matchedDealStage && a.matchedDealId ? (
+                    <a
+                      href={hubspotDealUrl(a.matchedDealId)}
+                      target="_blank"
+                      rel="noopener"
+                      className="text-blue-700 hover:underline"
+                      title={a.matchedDealName ?? undefined}
+                    >
+                      {a.matchedDealStage}
+                    </a>
+                  ) : (
+                    a.matchedDealStage ?? "—"
+                  )}
+                </Td>
+                <Td>{a.csm ?? "—"}</Td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="p-6 text-center text-gray-500">
+                <td colSpan={9} className="p-6 text-center text-gray-500">
                   No accounts match the current filters.
                 </td>
               </tr>
@@ -316,7 +314,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
           </tbody>
           <tfoot>
             <tr className="border-t border-gray-200 bg-gray-50">
-              <td colSpan={10} className="px-3 py-2 text-xs text-gray-600">
+              <td colSpan={9} className="px-3 py-2 text-xs text-gray-600">
                 Showing {filtered.length.toLocaleString()} of {accounts.length.toLocaleString()} accounts
               </td>
             </tr>
