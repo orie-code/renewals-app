@@ -18,6 +18,10 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+// Sentinel option value shown in the Year filter for accounts whose
+// Metabase row has no renewal date.
+const NO_YEAR_KEY = "__no_year__";
+
 function fmtUsd(n: number): string {
   return n.toLocaleString("en-US", {
     style: "currency",
@@ -138,10 +142,11 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
   const [dateMatch, setDateMatch] = useState<string>("all");
   const [gapsOnly, setGapsOnly] = useState<boolean>(false);
 
-  const yearOptions = useMemo(
-    () => uniqueSorted(accounts.map((a) => (a.renewalYear ? String(a.renewalYear) : null))),
-    [accounts],
-  );
+  const yearOptions = useMemo(() => {
+    const years = uniqueSorted(accounts.map((a) => (a.renewalYear ? String(a.renewalYear) : null)));
+    const hasNoYear = accounts.some((a) => a.renewalYear == null);
+    return hasNoYear ? [...years, NO_YEAR_KEY] : years;
+  }, [accounts]);
   const stateOptions = useMemo(() => uniqueSorted(accounts.map((a) => a.state)), [accounts]);
   const csmOptions = useMemo(() => uniqueSorted(accounts.map((a) => a.csm)), [accounts]);
   const productOptions = useMemo(
@@ -182,7 +187,10 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
     const searchLc = search.trim().toLowerCase();
     return accounts.filter((a) => {
       if (searchLc && !a.companyName.toLowerCase().includes(searchLc)) return false;
-      if (years.size > 0 && !years.has(a.renewalYear ? String(a.renewalYear) : "")) return false;
+      if (years.size > 0) {
+        const key = a.renewalYear ? String(a.renewalYear) : NO_YEAR_KEY;
+        if (!years.has(key)) return false;
+      }
       if (months.size > 0 && !months.has(String(a.renewalMonth ?? ""))) return false;
       if (states.size > 0 && !states.has(a.state ?? "")) return false;
       if (csms.size > 0 && !csms.has(a.csm ?? "")) return false;
@@ -303,6 +311,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
             options={yearOptions}
             selected={years}
             onChange={setYears}
+            formatOption={(v) => (v === NO_YEAR_KEY ? "No renewal date" : v)}
           />
           <MultiSelectField
             label="Month"
