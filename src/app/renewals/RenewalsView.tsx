@@ -225,7 +225,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
               <Th>CSM</Th>
               <Th>Renewal date OK?</Th>
               <Th>Active products</Th>
-              <Th>Sign off</Th>
+              <Th>Renewal date</Th>
               <Th>Deal stage</Th>
               <Th>HubSpot status</Th>
             </tr>
@@ -253,7 +253,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
                 <Td>{a.csm ?? "—"}</Td>
                 <Td><RenewalDateMatchCell account={a} /></Td>
                 <Td>{a.activeProducts ?? "—"}</Td>
-                <Td>{a.planYearSignOff ?? "—"}</Td>
+                <Td>{fmtDateShort(a.renewalDate)}</Td>
                 <Td>
                   {a.matchedDealStage && a.matchedDealId ? (
                     <a
