@@ -3,4 +3,11 @@
 @tailwind utilities;
 
 html, body { height: 100%; }
-body { @apply bg-gray-50 text-gray-900; }
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Hide the default details marker on summary so our custom chevron is alone */
+details > summary::-webkit-details-marker { display: none; }
+details > summary { list-style: none; }

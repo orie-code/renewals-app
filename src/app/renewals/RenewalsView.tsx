@@ -12,6 +12,7 @@ function hubspotCompanyUrl(companyId: string): string {
 function hubspotDealUrl(dealId: string): string {
   return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-3/${dealId}`;
 }
+
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -25,6 +26,16 @@ function fmtUsd(n: number): string {
   });
 }
 
+function fmtUsdCompact(n: number): string {
+  if (Math.abs(n) >= 1_000_000) {
+    return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+  }
+  if (Math.abs(n) >= 1_000) {
+    return `$${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}K`;
+  }
+  return fmtUsd(n);
+}
+
 function uniqueSorted(values: (string | null | undefined)[]): string[] {
   const set = new Set<string>();
   for (const v of values) {
@@ -33,7 +44,6 @@ function uniqueSorted(values: (string | null | undefined)[]): string[] {
   return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
 
-// Split a comma/plus/slash/&/"and"-separated product list into individual tokens.
 function parseProducts(raw: string | null | undefined): string[] {
   if (!raw) return [];
   return raw
@@ -44,7 +54,6 @@ function parseProducts(raw: string | null | undefined): string[] {
 
 function fmtDateShort(iso: string | null): string {
   if (!iso) return "—";
-  // YYYY-MM-DD → MMM D, YYYY (UTC, to avoid TZ shifting the day)
   const d = new Date(`${iso}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-US", {
@@ -75,6 +84,26 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
     () => uniqueSorted(accounts.map((a) => a.matchedDealStage)),
     [accounts],
   );
+
+  const filtersDirty =
+    months.size > 0 ||
+    csms.size > 0 ||
+    ae !== "all" ||
+    product !== "all" ||
+    dealStages.size > 0 ||
+    dateMatch !== "all" ||
+    gapsOnly;
+
+  function resetFilters() {
+    setMonths(new Set());
+    setCsms(new Set());
+    setAe("all");
+    setProduct("all");
+    setProductMode("include");
+    setDealStages(new Set());
+    setDateMatch("all");
+    setGapsOnly(false);
+  }
 
   const filtered = useMemo(() => {
     const productLc = product.toLowerCase();
@@ -108,207 +137,226 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
   }, [accounts]);
 
   return (
-    <main className="max-w-7xl mx-auto p-6 space-y-6">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">2026 Renewals</h1>
+    <main className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <header className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
+            2026 Renewals
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {totals.total.toLocaleString()} accounts ·{" "}
+            {fmtUsdCompact(totals.totalArr)} ARR
+          </p>
+        </div>
         <a
           href="/renewals?refresh=1"
-          className="text-sm text-blue-600 hover:underline"
+          className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900"
         >
-          Refresh data
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+            <path d="M21 3v5h-5" />
+          </svg>
+          Refresh
         </a>
       </header>
 
       <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatCard label="Total accounts" value={totals.total.toLocaleString()} />
-        <StatCard label="Total 2026 ARR" value={fmtUsd(totals.totalArr)} />
+        <StatCard label="2026 ARR" value={fmtUsdCompact(totals.totalArr)} />
         <StatCard label="Covered" value={totals.covered.toLocaleString()} tone="green" />
         <StatCard label="Gaps" value={totals.gaps.toLocaleString()} tone="red" />
-        <StatCard label="ARR at risk" value={fmtUsd(totals.arrAtRisk)} tone="red" />
+        <StatCard label="ARR at risk" value={fmtUsdCompact(totals.arrAtRisk)} tone="red" />
       </section>
 
-      <section className="flex flex-wrap items-end gap-3 bg-white p-4 rounded border border-gray-200">
-        <MultiSelectField
-          label="Month"
-          options={MONTHS.map((_, i) => String(i + 1))}
-          selected={months}
-          onChange={setMonths}
-          formatOption={(v) => MONTHS[Number(v) - 1] ?? v}
-        />
-        <MultiSelectField
-          label="CSM"
-          options={csmOptions}
-          selected={csms}
-          onChange={setCsms}
-        />
-        <Field label="AE">
-          <select
-            value={ae}
-            onChange={(e) => setAe(e.target.value)}
-            className="border border-gray-300 rounded px-2 py-1 text-sm"
-          >
-            <option value="all">All</option>
-            {aeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </Field>
-        <Field label="Product">
-          <div className="flex items-center gap-1">
-            <select
-              value={productMode}
-              onChange={(e) => setProductMode(e.target.value as "include" | "exclude")}
-              disabled={product === "all"}
-              className="border border-gray-300 rounded px-2 py-1 text-sm disabled:bg-gray-50 disabled:text-gray-400"
-            >
-              <option value="include">includes</option>
-              <option value="exclude">excludes</option>
-            </select>
-            <select
-              value={product}
-              onChange={(e) => setProduct(e.target.value)}
-              className="border border-gray-300 rounded px-2 py-1 text-sm"
-            >
-              <option value="all">Any</option>
-              {productOptions.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
-        </Field>
-        <MultiSelectField
-          label="Deal stage"
-          options={dealStageOptions}
-          selected={dealStages}
-          onChange={setDealStages}
-        />
-        <Field label="Date match">
-          <select
-            value={dateMatch}
-            onChange={(e) => setDateMatch(e.target.value)}
-            className="border border-gray-300 rounded px-2 py-1 text-sm"
-          >
-            <option value="all">Any</option>
-            <option value="match">Match</option>
-            <option value="mismatch">Mismatch</option>
-            <option value="missing">Deal missing date</option>
-            <option value="na">No deal</option>
-          </select>
-        </Field>
-        <label className="flex items-center gap-2 text-sm ml-auto">
-          <input
-            type="checkbox"
-            checked={gapsOnly}
-            onChange={(e) => setGapsOnly(e.target.checked)}
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+          <MultiSelectField
+            label="Month"
+            options={MONTHS.map((_, i) => String(i + 1))}
+            selected={months}
+            onChange={setMonths}
+            formatOption={(v) => MONTHS[Number(v) - 1] ?? v}
           />
-          Gaps only
-        </label>
+          <MultiSelectField
+            label="CSM"
+            options={csmOptions}
+            selected={csms}
+            onChange={setCsms}
+          />
+          <Field label="AE">
+            <SelectInput value={ae} onChange={setAe}>
+              <option value="all">All</option>
+              {aeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </SelectInput>
+          </Field>
+          <Field label="Product">
+            <div className="flex items-center gap-1.5">
+              <SelectInput
+                value={productMode}
+                onChange={(v) => setProductMode(v as "include" | "exclude")}
+                disabled={product === "all"}
+                className="min-w-[100px]"
+              >
+                <option value="include">includes</option>
+                <option value="exclude">excludes</option>
+              </SelectInput>
+              <SelectInput value={product} onChange={setProduct}>
+                <option value="all">Any</option>
+                {productOptions.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </SelectInput>
+            </div>
+          </Field>
+          <MultiSelectField
+            label="Deal stage"
+            options={dealStageOptions}
+            selected={dealStages}
+            onChange={setDealStages}
+          />
+          <Field label="Date match">
+            <SelectInput value={dateMatch} onChange={setDateMatch}>
+              <option value="all">Any</option>
+              <option value="match">Match</option>
+              <option value="mismatch">Mismatch</option>
+              <option value="missing">Deal missing date</option>
+              <option value="na">No deal</option>
+            </SelectInput>
+          </Field>
+          <div className="ml-auto flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-slate-700 select-none">
+              <input
+                type="checkbox"
+                checked={gapsOnly}
+                onChange={(e) => setGapsOnly(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Gaps only
+            </label>
+            {filtersDirty && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="text-sm font-medium text-slate-500 hover:text-slate-900"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
       </section>
 
-      <section className="bg-white rounded border border-gray-200 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-gray-600">
-            <tr>
-              <Th>Company</Th>
-              <Th>Renewal date</Th>
-              <Th className="text-right">ARR</Th>
-              <Th>State</Th>
-              <Th>Active products</Th>
-              <Th>HubSpot status</Th>
-              <Th>Renewal date OK?</Th>
-              <Th>Deal stage</Th>
-              <Th>CSM</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((a) => (
-              <tr key={`${a.companyName}-${a.cbCustomerId ?? "?"}`} className="border-t border-gray-100">
-                <Td>
-                  {a.hubspotCompanyId ? (
-                    <a
-                      href={hubspotCompanyUrl(a.hubspotCompanyId)}
-                      target="_blank"
-                      rel="noopener"
-                      className="text-blue-700 hover:underline"
-                    >
-                      {a.companyName}
-                    </a>
-                  ) : (
-                    a.companyName
-                  )}
-                </Td>
-                <Td>{fmtDateShort(a.renewalDate)}</Td>
-                <Td className="text-right">{fmtUsd(a.arr)}</Td>
-                <Td>{a.state ?? "—"}</Td>
-                <Td>{a.activeProducts ?? "—"}</Td>
-                <Td>
-                  {a.status === "covered" ? (
-                    a.matchedDealId ? (
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              <tr>
+                <Th>Company</Th>
+                <Th>Renewal date</Th>
+                <Th className="text-right">ARR</Th>
+                <Th>State</Th>
+                <Th>Active products</Th>
+                <Th>HubSpot status</Th>
+                <Th>Renewal date OK?</Th>
+                <Th>Deal stage</Th>
+                <Th>CSM</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map((a) => (
+                <tr
+                  key={`${a.companyName}-${a.cbCustomerId ?? "?"}`}
+                  className="transition-colors hover:bg-slate-50/60"
+                >
+                  <Td className="font-medium text-slate-900">
+                    {a.hubspotCompanyId ? (
+                      <a
+                        href={hubspotCompanyUrl(a.hubspotCompanyId)}
+                        target="_blank"
+                        rel="noopener"
+                        className="text-indigo-700 hover:text-indigo-900 hover:underline"
+                      >
+                        {a.companyName}
+                      </a>
+                    ) : (
+                      a.companyName
+                    )}
+                  </Td>
+                  <Td className="whitespace-nowrap text-slate-700">{fmtDateShort(a.renewalDate)}</Td>
+                  <Td className="text-right tabular-nums font-medium text-slate-900">{fmtUsd(a.arr)}</Td>
+                  <Td className="text-slate-700">{a.state ?? "—"}</Td>
+                  <Td className="text-slate-700">{a.activeProducts ?? "—"}</Td>
+                  <Td>
+                    {a.status === "covered" ? (
+                      a.matchedDealId ? (
+                        <a
+                          href={hubspotDealUrl(a.matchedDealId)}
+                          target="_blank"
+                          rel="noopener"
+                          title={a.matchedDealName ?? undefined}
+                          className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100"
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          covered
+                        </a>
+                      ) : (
+                        <span
+                          title={a.matchedDealName ?? undefined}
+                          className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200"
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          covered
+                        </span>
+                      )
+                    ) : a.hubspotCompanyId ? (
+                      <a
+                        href={hubspotCompanyUrl(a.hubspotCompanyId)}
+                        target="_blank"
+                        rel="noopener"
+                        className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200 hover:bg-rose-100"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                        no deal
+                      </a>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                        no deal
+                      </span>
+                    )}
+                  </Td>
+                  <Td><RenewalDateMatchCell account={a} /></Td>
+                  <Td>
+                    {a.matchedDealStage && a.matchedDealId ? (
                       <a
                         href={hubspotDealUrl(a.matchedDealId)}
                         target="_blank"
                         rel="noopener"
+                        className="text-indigo-700 hover:text-indigo-900 hover:underline"
                         title={a.matchedDealName ?? undefined}
-                        className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 hover:underline"
                       >
-                        covered
+                        {a.matchedDealStage}
                       </a>
                     ) : (
-                      <span
-                        title={a.matchedDealName ?? undefined}
-                        className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800"
-                      >
-                        covered
-                      </span>
-                    )
-                  ) : a.hubspotCompanyId ? (
-                    <a
-                      href={hubspotCompanyUrl(a.hubspotCompanyId)}
-                      target="_blank"
-                      rel="noopener"
-                      className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 hover:underline"
-                    >
-                      no deal
-                    </a>
-                  ) : (
-                    <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800">
-                      no deal
-                    </span>
-                  )}
-                </Td>
-                <Td><RenewalDateMatchCell account={a} /></Td>
-                <Td>
-                  {a.matchedDealStage && a.matchedDealId ? (
-                    <a
-                      href={hubspotDealUrl(a.matchedDealId)}
-                      target="_blank"
-                      rel="noopener"
-                      className="text-blue-700 hover:underline"
-                      title={a.matchedDealName ?? undefined}
-                    >
-                      {a.matchedDealStage}
-                    </a>
-                  ) : (
-                    a.matchedDealStage ?? "—"
-                  )}
-                </Td>
-                <Td>{a.csm ?? "—"}</Td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={9} className="p-6 text-center text-gray-500">
-                  No accounts match the current filters.
-                </td>
-              </tr>
-            )}
-          </tbody>
-          <tfoot>
-            <tr className="border-t border-gray-200 bg-gray-50">
-              <td colSpan={9} className="px-3 py-2 text-xs text-gray-600">
-                Showing {filtered.length.toLocaleString()} of {accounts.length.toLocaleString()} accounts
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+                      <span className="text-slate-400">{a.matchedDealStage ?? "—"}</span>
+                    )}
+                  </Td>
+                  <Td className="text-slate-700">{a.csm ?? "—"}</Td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="p-10 text-center text-sm text-slate-500">
+                    No accounts match the current filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-xs text-slate-500">
+          Showing <span className="font-medium text-slate-700">{filtered.length.toLocaleString()}</span> of {accounts.length.toLocaleString()} accounts
+        </div>
       </section>
     </main>
   );
@@ -323,17 +371,54 @@ function StatCard({
   value: string;
   tone?: "neutral" | "green" | "red";
 }) {
-  const toneClasses =
+  const accent =
     tone === "green"
-      ? "border-green-200"
+      ? "before:bg-emerald-500"
       : tone === "red"
-        ? "border-red-200"
-        : "border-gray-200";
+        ? "before:bg-rose-500"
+        : "before:bg-slate-300";
+  const valueColor =
+    tone === "green"
+      ? "text-emerald-700"
+      : tone === "red"
+        ? "text-rose-700"
+        : "text-slate-900";
   return (
-    <div className={`bg-white rounded border ${toneClasses} p-4`}>
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="text-xl font-semibold mt-1">{value}</div>
+    <div
+      className={`relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm before:absolute before:left-0 before:top-0 before:h-full before:w-1 ${accent}`}
+    >
+      <div className="text-xs font-medium uppercase tracking-wider text-slate-500">
+        {label}
+      </div>
+      <div className={`mt-1.5 text-2xl font-semibold tracking-tight tabular-nums ${valueColor}`}>
+        {value}
+      </div>
     </div>
+  );
+}
+
+function SelectInput({
+  value,
+  onChange,
+  children,
+  disabled,
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      className={`min-w-[140px] rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 shadow-sm hover:border-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${className}`}
+    >
+      {children}
+    </select>
   );
 }
 
@@ -358,30 +443,34 @@ function MultiSelectField({
         ? fmt(Array.from(selected)[0])
         : `${selected.size} selected`;
   return (
-    <div className="flex flex-col gap-1 text-xs text-gray-600">
-      <span>{label}</span>
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-slate-600">{label}</span>
       <details className="relative">
-        <summary className="list-none cursor-pointer border border-gray-300 rounded px-2 py-1 text-sm bg-white min-w-[140px] flex items-center justify-between gap-2">
-          <span className="truncate">{summary}</span>
-          <span className="text-gray-400">▾</span>
+        <summary className="flex min-w-[140px] cursor-pointer items-center justify-between gap-2 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 shadow-sm hover:border-slate-400">
+          <span className={`truncate ${selected.size === 0 ? "text-slate-500" : ""}`}>
+            {summary}
+          </span>
+          <svg className="h-3.5 w-3.5 text-slate-400" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+          </svg>
         </summary>
-        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-md p-2 z-10 max-h-64 overflow-auto min-w-[200px]">
+        <div className="absolute left-0 top-full z-20 mt-1.5 min-w-[220px] max-h-72 overflow-auto rounded-md border border-slate-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5">
           {options.length === 0 ? (
-            <div className="text-xs text-gray-500 px-1">No options</div>
+            <div className="px-2 py-1.5 text-xs text-slate-500">No options</div>
           ) : (
             <>
-              <div className="flex justify-between text-xs text-blue-600 px-1 pb-1 mb-1 border-b border-gray-100">
+              <div className="mb-1 flex justify-between border-b border-slate-100 px-1.5 pb-1.5 text-xs font-medium">
                 <button
                   type="button"
                   onClick={() => onChange(new Set(options))}
-                  className="hover:underline"
+                  className="text-indigo-600 hover:text-indigo-800"
                 >
                   Select all
                 </button>
                 <button
                   type="button"
                   onClick={() => onChange(new Set())}
-                  className="hover:underline"
+                  className="text-slate-500 hover:text-slate-800"
                 >
                   Clear
                 </button>
@@ -391,7 +480,7 @@ function MultiSelectField({
                 return (
                   <label
                     key={opt}
-                    className="flex items-center gap-2 text-sm py-0.5 px-1 cursor-pointer hover:bg-gray-50 rounded"
+                    className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
                   >
                     <input
                       type="checkbox"
@@ -402,6 +491,7 @@ function MultiSelectField({
                         else next.add(opt);
                         onChange(next);
                       }}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                     />
                     <span className="truncate">{fmt(opt)}</span>
                   </label>
@@ -417,30 +507,30 @@ function MultiSelectField({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="flex flex-col gap-1 text-xs text-gray-600">
-      <span>{label}</span>
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-slate-600">{label}</span>
       {children}
     </label>
   );
 }
 
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <th className={`px-3 py-2 font-medium ${className}`}>{children}</th>;
+  return <th className={`px-4 py-2.5 font-semibold ${className}`}>{children}</th>;
 }
 
 function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3 py-2 align-top ${className}`}>{children}</td>;
+  return <td className={`px-4 py-3 align-top ${className}`}>{children}</td>;
 }
 
 function RenewalDateMatchCell({ account: a }: { account: RenewalAccount }) {
   if (a.renewalDateMatch === "na") {
-    return <span className="text-gray-400">—</span>;
+    return <span className="text-slate-400">—</span>;
   }
   if (a.renewalDateMatch === "match") {
     return (
       <span
         title={`HubSpot: ${fmtDateShort(a.matchedDealRenewalDate)} · Metabase: ${fmtDateShort(a.renewalDate)}`}
-        className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800"
+        className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200"
       >
         ✓ match
       </span>
@@ -450,17 +540,16 @@ function RenewalDateMatchCell({ account: a }: { account: RenewalAccount }) {
     return (
       <span
         title={`HubSpot deal has no Renewal Date. Metabase: ${fmtDateShort(a.renewalDate)}`}
-        className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800"
+        className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-200"
       >
-        deal missing date
+        missing date
       </span>
     );
   }
-  // mismatch
   return (
     <span
       title={`HubSpot: ${fmtDateShort(a.matchedDealRenewalDate)} · Metabase: ${fmtDateShort(a.renewalDate)}`}
-      className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800"
+      className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200"
     >
       ✗ {fmtDateShort(a.matchedDealRenewalDate)}
     </span>
