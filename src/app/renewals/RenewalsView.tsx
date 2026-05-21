@@ -128,6 +128,7 @@ function fmtDateShort(iso: string | null): string {
 
 export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] }) {
   const [months, setMonths] = useState<Set<string>>(new Set());
+  const [states, setStates] = useState<Set<string>>(new Set());
   const [csms, setCsms] = useState<Set<string>>(new Set());
   const [product, setProduct] = useState<string>("all");
   const [productMode, setProductMode] = useState<"include" | "exclude">("include");
@@ -135,6 +136,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
   const [dateMatch, setDateMatch] = useState<string>("all");
   const [gapsOnly, setGapsOnly] = useState<boolean>(false);
 
+  const stateOptions = useMemo(() => uniqueSorted(accounts.map((a) => a.state)), [accounts]);
   const csmOptions = useMemo(() => uniqueSorted(accounts.map((a) => a.csm)), [accounts]);
   const productOptions = useMemo(
     () => uniqueSorted(accounts.flatMap((a) => parseProducts(a.activeProducts))),
@@ -147,6 +149,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
 
   const filtersDirty =
     months.size > 0 ||
+    states.size > 0 ||
     csms.size > 0 ||
     product !== "all" ||
     dealStages.size > 0 ||
@@ -155,6 +158,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
 
   function resetFilters() {
     setMonths(new Set());
+    setStates(new Set());
     setCsms(new Set());
     setProduct("all");
     setProductMode("include");
@@ -167,6 +171,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
     const productLc = product.toLowerCase();
     return accounts.filter((a) => {
       if (months.size > 0 && !months.has(String(a.renewalMonth ?? ""))) return false;
+      if (states.size > 0 && !states.has(a.state ?? "")) return false;
       if (csms.size > 0 && !csms.has(a.csm ?? "")) return false;
       if (gapsOnly && a.status !== "gap") return false;
       if (dealStages.size > 0 && !dealStages.has(a.matchedDealStage ?? "")) return false;
@@ -180,7 +185,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
       }
       return true;
     });
-  }, [accounts, months, csms, product, productMode, dealStages, dateMatch, gapsOnly]);
+  }, [accounts, months, states, csms, product, productMode, dealStages, dateMatch, gapsOnly]);
 
   const totals = useMemo(() => {
     const total = accounts.length;
@@ -252,6 +257,12 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
             selected={months}
             onChange={setMonths}
             formatOption={(v) => MONTHS[Number(v) - 1] ?? v}
+          />
+          <MultiSelectField
+            label="State"
+            options={stateOptions}
+            selected={states}
+            onChange={setStates}
           />
           <MultiSelectField
             label="CSM"
