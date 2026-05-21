@@ -27,6 +27,7 @@ export type RenewalAccount = {
 
   hubspotCompanyId: string | null;
   status: "covered" | "gap";
+  matchedDealId: string | null;
   matchedDealName: string | null;
   matchedDealStage: string | null;
 };
@@ -196,6 +197,7 @@ export async function loadRenewals(
       enrollmentRate: m.enrollmentRate,
       hubspotCompanyId: hsCompany?.hs_object_id ?? null,
       status: deal ? "covered" : "gap",
+      matchedDealId: deal?.id ?? null,
       matchedDealName: deal?.name ?? null,
       matchedDealStage: deal?.stageLabel ?? null,
     });

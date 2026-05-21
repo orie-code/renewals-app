@@ -4,6 +4,14 @@ import { useMemo, useState } from "react";
 import type { RenewalAccount } from "@/lib/renewals";
 
 const HUBSPOT_PORTAL_ID = "7460578";
+
+function hubspotCompanyUrl(companyId: string): string {
+  return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-2/${companyId}`;
+}
+
+function hubspotDealUrl(dealId: string): string {
+  return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-3/${dealId}`;
+}
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -137,7 +145,20 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
           <tbody>
             {filtered.map((a) => (
               <tr key={`${a.companyName}-${a.cbCustomerId ?? "?"}`} className="border-t border-gray-100">
-                <Td>{a.companyName}</Td>
+                <Td>
+                  {a.hubspotCompanyId ? (
+                    <a
+                      href={hubspotCompanyUrl(a.hubspotCompanyId)}
+                      target="_blank"
+                      rel="noopener"
+                      className="text-blue-700 hover:underline"
+                    >
+                      {a.companyName}
+                    </a>
+                  ) : (
+                    a.companyName
+                  )}
+                </Td>
                 <Td>{a.renewalMonth ? MONTHS[a.renewalMonth - 1] : "—"}</Td>
                 <Td className="text-right">{fmtUsd(a.arr)}</Td>
                 <Td>{a.state ?? "—"}</Td>
@@ -145,18 +166,44 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
                 <Td>{a.ae ?? "—"}</Td>
                 <Td>{a.activeProducts ?? "—"}</Td>
                 <Td>{a.planYearSignOff ?? "—"}</Td>
-                <Td>{a.matchedDealStage ?? "—"}</Td>
+                <Td>
+                  {a.matchedDealStage && a.matchedDealId ? (
+                    <a
+                      href={hubspotDealUrl(a.matchedDealId)}
+                      target="_blank"
+                      rel="noopener"
+                      className="text-blue-700 hover:underline"
+                      title={a.matchedDealName ?? undefined}
+                    >
+                      {a.matchedDealStage}
+                    </a>
+                  ) : (
+                    a.matchedDealStage ?? "—"
+                  )}
+                </Td>
                 <Td>
                   {a.status === "covered" ? (
-                    <span
-                      title={a.matchedDealName ?? undefined}
-                      className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800"
-                    >
-                      covered
-                    </span>
+                    a.matchedDealId ? (
+                      <a
+                        href={hubspotDealUrl(a.matchedDealId)}
+                        target="_blank"
+                        rel="noopener"
+                        title={a.matchedDealName ?? undefined}
+                        className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 hover:underline"
+                      >
+                        covered
+                      </a>
+                    ) : (
+                      <span
+                        title={a.matchedDealName ?? undefined}
+                        className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800"
+                      >
+                        covered
+                      </span>
+                    )
                   ) : a.hubspotCompanyId ? (
                     <a
-                      href={`https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-2/${a.hubspotCompanyId}`}
+                      href={hubspotCompanyUrl(a.hubspotCompanyId)}
                       target="_blank"
                       rel="noopener"
                       className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 hover:underline"
