@@ -52,6 +52,68 @@ function parseProducts(raw: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
+function csvEscape(value: unknown): string {
+  if (value == null) return "";
+  let s = String(value);
+  // Mitigate CSV injection when opened in Excel/Sheets.
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  if (/[",\n\r]/.test(s)) {
+    s = `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function buildCsv(accounts: RenewalAccount[]): string {
+  const headers = [
+    "Company",
+    "Renewal date",
+    "ARR",
+    "State",
+    "CSM",
+    "AE",
+    "Active products",
+    "Enrolled employees",
+    "Enrollment rate",
+    "Chargebee customer ID",
+    "HubSpot status",
+    "HubSpot deal name",
+    "HubSpot deal stage",
+    "HubSpot deal renewal date",
+    "Renewal date match",
+  ];
+  const rows = accounts.map((a) => [
+    a.companyName,
+    a.renewalDate ?? "",
+    a.arr,
+    a.state ?? "",
+    a.csm ?? "",
+    a.ae ?? "",
+    a.activeProducts ?? "",
+    a.enrolledEmployeeCount ?? "",
+    a.enrollmentRate ?? "",
+    a.cbCustomerId ?? "",
+    a.status,
+    a.matchedDealName ?? "",
+    a.matchedDealStage ?? "",
+    a.matchedDealRenewalDate ?? "",
+    a.renewalDateMatch,
+  ]);
+  return [headers, ...rows].map((r) => r.map(csvEscape).join(",")).join("\n");
+}
+
+function downloadCsv(filename: string, csv: string) {
+  // BOM so Excel opens UTF-8 correctly.
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 function fmtDateShort(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(`${iso}T00:00:00Z`);
@@ -148,16 +210,35 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
             {fmtUsdCompact(totals.totalArr)} ARR
           </p>
         </div>
-        <a
-          href="/renewals?refresh=1"
-          className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900"
-        >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
-            <path d="M21 3v5h-5" />
-          </svg>
-          Refresh
-        </a>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const today = new Date().toISOString().slice(0, 10);
+              downloadCsv(`renewals-2026-${today}.csv`, buildCsv(filtered));
+            }}
+            disabled={filtered.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+            title={`Export ${filtered.length.toLocaleString()} row${filtered.length === 1 ? "" : "s"} to CSV`}
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Export CSV
+          </button>
+          <a
+            href="/renewals?refresh=1"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+              <path d="M21 3v5h-5" />
+            </svg>
+            Refresh
+          </a>
+        </div>
       </header>
 
       <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
