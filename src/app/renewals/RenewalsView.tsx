@@ -127,6 +127,7 @@ function fmtDateShort(iso: string | null): string {
 }
 
 export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] }) {
+  const [search, setSearch] = useState<string>("");
   const [months, setMonths] = useState<Set<string>>(new Set());
   const [states, setStates] = useState<Set<string>>(new Set());
   const [csms, setCsms] = useState<Set<string>>(new Set());
@@ -148,6 +149,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
   );
 
   const filtersDirty =
+    search.trim() !== "" ||
     months.size > 0 ||
     states.size > 0 ||
     csms.size > 0 ||
@@ -157,6 +159,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
     gapsOnly;
 
   function resetFilters() {
+    setSearch("");
     setMonths(new Set());
     setStates(new Set());
     setCsms(new Set());
@@ -169,7 +172,9 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
 
   const filtered = useMemo(() => {
     const productLc = product.toLowerCase();
+    const searchLc = search.trim().toLowerCase();
     return accounts.filter((a) => {
+      if (searchLc && !a.companyName.toLowerCase().includes(searchLc)) return false;
       if (months.size > 0 && !months.has(String(a.renewalMonth ?? ""))) return false;
       if (states.size > 0 && !states.has(a.state ?? "")) return false;
       if (csms.size > 0 && !csms.has(a.csm ?? "")) return false;
@@ -185,7 +190,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
       }
       return true;
     });
-  }, [accounts, months, states, csms, product, productMode, dealStages, dateMatch, gapsOnly]);
+  }, [accounts, search, months, states, csms, product, productMode, dealStages, dateMatch, gapsOnly]);
 
   const totals = useMemo(() => {
     const total = accounts.length;
@@ -249,7 +254,41 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
         <StatCard label="ARR at risk" value={fmtUsdCompact(totals.arrAtRisk)} tone="red" />
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 space-y-3">
+        <div className="relative">
+          <svg
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search company name…"
+            className="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-9 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 hover:border-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
         <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           <MultiSelectField
             label="Month"
