@@ -129,7 +129,6 @@ function fmtDateShort(iso: string | null): string {
 export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] }) {
   const [months, setMonths] = useState<Set<string>>(new Set());
   const [csms, setCsms] = useState<Set<string>>(new Set());
-  const [ae, setAe] = useState<string>("all");
   const [product, setProduct] = useState<string>("all");
   const [productMode, setProductMode] = useState<"include" | "exclude">("include");
   const [dealStages, setDealStages] = useState<Set<string>>(new Set());
@@ -137,7 +136,6 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
   const [gapsOnly, setGapsOnly] = useState<boolean>(false);
 
   const csmOptions = useMemo(() => uniqueSorted(accounts.map((a) => a.csm)), [accounts]);
-  const aeOptions = useMemo(() => uniqueSorted(accounts.map((a) => a.ae)), [accounts]);
   const productOptions = useMemo(
     () => uniqueSorted(accounts.flatMap((a) => parseProducts(a.activeProducts))),
     [accounts],
@@ -150,7 +148,6 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
   const filtersDirty =
     months.size > 0 ||
     csms.size > 0 ||
-    ae !== "all" ||
     product !== "all" ||
     dealStages.size > 0 ||
     dateMatch !== "all" ||
@@ -159,7 +156,6 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
   function resetFilters() {
     setMonths(new Set());
     setCsms(new Set());
-    setAe("all");
     setProduct("all");
     setProductMode("include");
     setDealStages(new Set());
@@ -172,7 +168,6 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
     return accounts.filter((a) => {
       if (months.size > 0 && !months.has(String(a.renewalMonth ?? ""))) return false;
       if (csms.size > 0 && !csms.has(a.csm ?? "")) return false;
-      if (ae !== "all" && (a.ae ?? "") !== ae) return false;
       if (gapsOnly && a.status !== "gap") return false;
       if (dealStages.size > 0 && !dealStages.has(a.matchedDealStage ?? "")) return false;
       if (dateMatch !== "all" && a.renewalDateMatch !== dateMatch) return false;
@@ -185,7 +180,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
       }
       return true;
     });
-  }, [accounts, months, csms, ae, product, productMode, dealStages, dateMatch, gapsOnly]);
+  }, [accounts, months, csms, product, productMode, dealStages, dateMatch, gapsOnly]);
 
   const totals = useMemo(() => {
     const total = accounts.length;
@@ -264,12 +259,6 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
             selected={csms}
             onChange={setCsms}
           />
-          <Field label="AE">
-            <SelectInput value={ae} onChange={setAe}>
-              <option value="all">All</option>
-              {aeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-            </SelectInput>
-          </Field>
           <Field label="Product">
             <div className="flex items-center gap-1.5">
               <SelectInput
