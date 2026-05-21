@@ -30,28 +30,9 @@ export type RenewalAccount = {
   matchedDealId: string | null;
   matchedDealName: string | null;
   matchedDealStage: string | null;
-  matchedDealRenewalDate: string | null; // ISO YYYY-MM-DD (effective: renewal_date if in 2026, else closedate)
-  matchedDealRenewalDateSource: "renewal_date" | "closedate" | null;
+  matchedDealRenewalDate: string | null; // ISO YYYY-MM-DD, from the deal's renewal_date property
   renewalDateMatch: "match" | "mismatch" | "missing" | "na";
 };
-
-// Prefer renewal_date when it falls in 2026; otherwise fall back to closedate.
-// This handles deals where renewal_date is stale/blank but closedate reflects
-// the real 2026 renewal target.
-function effectiveDealDate(deal: RenewalDeal): {
-  date: string | null;
-  source: "renewal_date" | "closedate" | null;
-} {
-  if (deal.renewalDate && deal.renewalDate.startsWith("2026")) {
-    return { date: deal.renewalDate, source: "renewal_date" };
-  }
-  if (deal.closeDate && deal.closeDate.startsWith("2026")) {
-    return { date: deal.closeDate, source: "closedate" };
-  }
-  if (deal.renewalDate) return { date: deal.renewalDate, source: "renewal_date" };
-  if (deal.closeDate) return { date: deal.closeDate, source: "closedate" };
-  return { date: null, source: null };
-}
 
 const norm = (s: string | null | undefined) =>
   (s ?? "").toLowerCase().trim().replace(/\s+/g, " ");
@@ -203,7 +184,6 @@ export async function loadRenewals(
     if (hsCompany) deal = dealByCompanyId.get(hsCompany.hs_object_id);
     if (!deal) deal = dealByCompanyName.get(norm(m.companyName));
 
-    const eff = deal ? effectiveDealDate(deal) : { date: null, source: null as null };
     accounts.push({
       companyName: m.companyName,
       cbCustomerId: m.cbCustomerId,
@@ -222,13 +202,12 @@ export async function loadRenewals(
       matchedDealId: deal?.id ?? null,
       matchedDealName: deal?.name ?? null,
       matchedDealStage: deal?.stageLabel ?? null,
-      matchedDealRenewalDate: eff.date,
-      matchedDealRenewalDateSource: eff.source,
+      matchedDealRenewalDate: deal?.renewalDate ?? null,
       renewalDateMatch: !deal
         ? "na"
-        : !eff.date
+        : !deal.renewalDate
           ? "missing"
-          : m.renewalDate && m.renewalDate === eff.date
+          : m.renewalDate && m.renewalDate === deal.renewalDate
             ? "match"
             : "mismatch",
     });
