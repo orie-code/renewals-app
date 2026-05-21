@@ -56,12 +56,12 @@ function fmtDateShort(iso: string | null): string {
 }
 
 export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] }) {
-  const [month, setMonth] = useState<string>("all");
+  const [months, setMonths] = useState<Set<string>>(new Set());
   const [csms, setCsms] = useState<Set<string>>(new Set());
   const [ae, setAe] = useState<string>("all");
   const [product, setProduct] = useState<string>("all");
   const [productMode, setProductMode] = useState<"include" | "exclude">("include");
-  const [dealStage, setDealStage] = useState<string>("all");
+  const [dealStages, setDealStages] = useState<Set<string>>(new Set());
   const [dateMatch, setDateMatch] = useState<string>("all");
   const [gapsOnly, setGapsOnly] = useState<boolean>(false);
 
@@ -79,11 +79,11 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
   const filtered = useMemo(() => {
     const productLc = product.toLowerCase();
     return accounts.filter((a) => {
-      if (month !== "all" && String(a.renewalMonth ?? "") !== month) return false;
+      if (months.size > 0 && !months.has(String(a.renewalMonth ?? ""))) return false;
       if (csms.size > 0 && !csms.has(a.csm ?? "")) return false;
       if (ae !== "all" && (a.ae ?? "") !== ae) return false;
       if (gapsOnly && a.status !== "gap") return false;
-      if (dealStage !== "all" && (a.matchedDealStage ?? "") !== dealStage) return false;
+      if (dealStages.size > 0 && !dealStages.has(a.matchedDealStage ?? "")) return false;
       if (dateMatch !== "all" && a.renewalDateMatch !== dateMatch) return false;
       if (product !== "all") {
         const has = parseProducts(a.activeProducts).some(
@@ -94,7 +94,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
       }
       return true;
     });
-  }, [accounts, month, csms, ae, product, productMode, dealStage, dateMatch, gapsOnly]);
+  }, [accounts, months, csms, ae, product, productMode, dealStages, dateMatch, gapsOnly]);
 
   const totals = useMemo(() => {
     const total = accounts.length;
@@ -128,18 +128,13 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
       </section>
 
       <section className="flex flex-wrap items-end gap-3 bg-white p-4 rounded border border-gray-200">
-        <Field label="Month">
-          <select
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="border border-gray-300 rounded px-2 py-1 text-sm"
-          >
-            <option value="all">All</option>
-            {MONTHS.map((m, i) => (
-              <option key={m} value={String(i + 1)}>{m}</option>
-            ))}
-          </select>
-        </Field>
+        <MultiSelectField
+          label="Month"
+          options={MONTHS.map((_, i) => String(i + 1))}
+          selected={months}
+          onChange={setMonths}
+          formatOption={(v) => MONTHS[Number(v) - 1] ?? v}
+        />
         <MultiSelectField
           label="CSM"
           options={csmOptions}
@@ -179,18 +174,12 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
             </select>
           </div>
         </Field>
-        <Field label="Deal stage">
-          <select
-            value={dealStage}
-            onChange={(e) => setDealStage(e.target.value)}
-            className="border border-gray-300 rounded px-2 py-1 text-sm"
-          >
-            <option value="all">All</option>
-            {dealStageOptions.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </Field>
+        <MultiSelectField
+          label="Deal stage"
+          options={dealStageOptions}
+          selected={dealStages}
+          onChange={setDealStages}
+        />
         <Field label="Date match">
           <select
             value={dateMatch}
@@ -353,17 +342,20 @@ function MultiSelectField({
   options,
   selected,
   onChange,
+  formatOption,
 }: {
   label: string;
   options: string[];
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
+  formatOption?: (opt: string) => string;
 }) {
+  const fmt = formatOption ?? ((o: string) => o);
   const summary =
     selected.size === 0
       ? "All"
       : selected.size === 1
-        ? Array.from(selected)[0]
+        ? fmt(Array.from(selected)[0])
         : `${selected.size} selected`;
   return (
     <div className="flex flex-col gap-1 text-xs text-gray-600">
@@ -411,7 +403,7 @@ function MultiSelectField({
                         onChange(next);
                       }}
                     />
-                    <span className="truncate">{opt}</span>
+                    <span className="truncate">{fmt(opt)}</span>
                   </label>
                 );
               })}
