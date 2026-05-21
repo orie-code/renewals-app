@@ -2,7 +2,7 @@ import { cached } from "./cache";
 import { queryCard, type MetabaseRow } from "./metabase";
 import {
   fetchCompaniesWithChargebeeId,
-  fetchRenewal2026Deals,
+  fetchRenewalDeals,
   findRenewalPipeline,
   type HubspotCompany,
   type RenewalDeal,
@@ -18,6 +18,7 @@ export type RenewalAccount = {
   arr: number;
   renewalDate: string | null;
   renewalMonth: number | null; // 1-12
+  renewalYear: number | null;
   csm: string | null;
   ae: string | null;
   activeProducts: string | null;
@@ -33,6 +34,28 @@ export type RenewalAccount = {
   matchedDealRenewalDate: string | null; // ISO YYYY-MM-DD, from the deal's renewal_date property
   renewalDateMatch: "match" | "mismatch" | "missing" | "na";
 };
+
+function dealYears(d: RenewalDeal): Set<number> {
+  const years = new Set<number>();
+  if (d.renewalDate) {
+    const y = parseInt(d.renewalDate.slice(0, 4), 10);
+    if (Number.isFinite(y)) years.add(y);
+  }
+  if (d.closeDate) {
+    const y = parseInt(d.closeDate.slice(0, 4), 10);
+    if (Number.isFinite(y)) years.add(y);
+  }
+  return years;
+}
+
+function pickDealForYear(
+  deals: RenewalDeal[] | undefined,
+  year: number | null,
+): RenewalDeal | undefined {
+  if (!deals || deals.length === 0) return undefined;
+  if (year == null) return deals[0];
+  return deals.find((d) => dealYears(d).has(year));
+}
 
 const norm = (s: string | null | undefined) =>
   (s ?? "").toLowerCase().trim().replace(/\s+/g, " ");
@@ -115,9 +138,9 @@ async function loadRawMetabase(): Promise<MetabaseRow[]> {
 }
 
 async function loadDeals(): Promise<RenewalDeal[]> {
-  return cached("hubspot:renewal-2026-deals", TEN_MINUTES, async () => {
+  return cached("hubspot:renewal-deals", TEN_MINUTES, async () => {
     const pipeline = await findRenewalPipeline();
-    return fetchRenewal2026Deals(pipeline);
+    return fetchRenewalDeals(pipeline);
   });
 }
 
@@ -133,11 +156,11 @@ export async function loadRenewals(
     await Promise.all([
       cached("metabase:card:3042", TEN_MINUTES, () => queryCard(RENEWALS_CARD_ID), { bypass: true }),
       cached(
-        "hubspot:renewal-2026-deals",
+        "hubspot:renewal-deals",
         TEN_MINUTES,
         async () => {
           const pipeline = await findRenewalPipeline();
-          return fetchRenewal2026Deals(pipeline);
+          return fetchRenewalDeals(pipeline);
         },
         { bypass: true },
       ),
@@ -159,19 +182,29 @@ export async function loadRenewals(
     if (c.name) companyByName.set(norm(c.name), c);
   }
 
-  // Index renewal deals by HubSpot company id and by normalized company name
-  const dealByCompanyId = new Map<string, RenewalDeal>();
-  const dealByCompanyName = new Map<string, RenewalDeal>();
+  // Group renewal deals by HubSpot company id (and by normalized company
+  // name as a fallback) — a single company can have multiple deals across
+  // years, so we pick the right one per Metabase row by matching year.
+  const dealsByCompanyId = new Map<string, RenewalDeal[]>();
+  const dealsByCompanyName = new Map<string, RenewalDeal[]>();
   for (const d of deals) {
-    if (d.companyId) dealByCompanyId.set(d.companyId, d);
-    if (d.companyName) dealByCompanyName.set(norm(d.companyName), d);
+    if (d.companyId) {
+      const arr = dealsByCompanyId.get(d.companyId) ?? [];
+      arr.push(d);
+      dealsByCompanyId.set(d.companyId, arr);
+    }
+    if (d.companyName) {
+      const key = norm(d.companyName);
+      const arr = dealsByCompanyName.get(key) ?? [];
+      arr.push(d);
+      dealsByCompanyName.set(key, arr);
+    }
   }
 
-  // Map + filter Metabase rows to 2026 renewals
+  // Map Metabase rows to RenewalAccounts (all years, no JS-level filter)
   const accounts: RenewalAccount[] = [];
   for (const row of rawRows) {
     const m = mapMetabaseRow(row);
-    if (m.renewalYear !== 2026) continue;
     if (!m.companyName) continue;
 
     // Match HubSpot company: prefer CB id, fall back to name
@@ -179,10 +212,14 @@ export async function loadRenewals(
     if (m.cbCustomerId) hsCompany = companyByCb.get(m.cbCustomerId);
     if (!hsCompany) hsCompany = companyByName.get(norm(m.companyName));
 
-    // Match deal: prefer via HS company id, fall back to name
+    // Match deal: pick the one whose year matches this row, prefer via HS company id
     let deal: RenewalDeal | undefined;
-    if (hsCompany) deal = dealByCompanyId.get(hsCompany.hs_object_id);
-    if (!deal) deal = dealByCompanyName.get(norm(m.companyName));
+    if (hsCompany) {
+      deal = pickDealForYear(dealsByCompanyId.get(hsCompany.hs_object_id), m.renewalYear);
+    }
+    if (!deal) {
+      deal = pickDealForYear(dealsByCompanyName.get(norm(m.companyName)), m.renewalYear);
+    }
 
     accounts.push({
       companyName: m.companyName,
@@ -191,6 +228,7 @@ export async function loadRenewals(
       arr: m.arr,
       renewalDate: m.renewalDate,
       renewalMonth: m.renewalMonth,
+      renewalYear: m.renewalYear,
       csm: m.csm,
       ae: m.ae,
       activeProducts: m.activeProducts,
@@ -214,6 +252,9 @@ export async function loadRenewals(
   }
 
   accounts.sort((a, b) => {
+    const ay = a.renewalYear ?? 9999;
+    const by = b.renewalYear ?? 9999;
+    if (ay !== by) return ay - by;
     const am = a.renewalMonth ?? 13;
     const bm = b.renewalMonth ?? 13;
     if (am !== bm) return am - bm;

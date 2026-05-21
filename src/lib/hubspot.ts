@@ -122,16 +122,17 @@ type DealSearchResult = {
   paging?: { next?: { after: string } };
 };
 
-export async function fetchRenewal2026Deals(
+// Window of renewal years we care about. Keeps the deal search bounded
+// (the Renewal Pipeline contains years of historical closed deals we
+// don't want) while still covering past, current, and forward years.
+const RENEWAL_YEAR_START = 2024;
+const RENEWAL_YEAR_END = 2028;
+
+export async function fetchRenewalDeals(
   pipeline: RenewalPipeline,
 ): Promise<RenewalDeal[]> {
-  // We pull deals in the Renewal Pipeline that match 2026 by ANY of:
-  //   (a) name contains "2026 renewal",
-  //   (b) renewal_date falls in calendar year 2026, or
-  //   (c) closedate falls in calendar year 2026.
-  // (b) and (c) catch deals like Oceanwide where the name says "2025" or
-  // the renewal_date is wrong but the closedate reflects the real 2026
-  // renewal target.
+  // Pull deals in the Renewal Pipeline whose renewal_date OR closedate
+  // falls in our window. Two searches, deduped by id.
   const dealsById = new Map<string, RenewalDeal>();
 
   const collect = async (extraFilter: Record<string, unknown>) => {
@@ -189,25 +190,20 @@ export async function fetchRenewal2026Deals(
     }
   };
 
-  await collect({
-    propertyName: "dealname",
-    operator: "CONTAINS_TOKEN",
-    value: "2026 renewal",
-  });
   // HubSpot date properties in search filters take epoch ms at UTC midnight.
-  const jan1_2026 = Date.UTC(2026, 0, 1);
-  const dec31_2026 = Date.UTC(2026, 11, 31);
+  const windowStart = Date.UTC(RENEWAL_YEAR_START, 0, 1);
+  const windowEnd = Date.UTC(RENEWAL_YEAR_END, 11, 31);
   await collect({
     propertyName: "renewal_date",
     operator: "BETWEEN",
-    value: String(jan1_2026),
-    highValue: String(dec31_2026),
+    value: String(windowStart),
+    highValue: String(windowEnd),
   });
   await collect({
     propertyName: "closedate",
     operator: "BETWEEN",
-    value: String(jan1_2026),
-    highValue: String(dec31_2026),
+    value: String(windowStart),
+    highValue: String(windowEnd),
   });
 
   const deals = Array.from(dealsById.values());

@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Renewals",
-  description: "2026 renewal coverage dashboard",
+  description: "Renewal coverage dashboard",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

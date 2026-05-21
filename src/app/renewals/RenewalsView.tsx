@@ -128,6 +128,7 @@ function fmtDateShort(iso: string | null): string {
 
 export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] }) {
   const [search, setSearch] = useState<string>("");
+  const [years, setYears] = useState<Set<string>>(new Set());
   const [months, setMonths] = useState<Set<string>>(new Set());
   const [states, setStates] = useState<Set<string>>(new Set());
   const [csms, setCsms] = useState<Set<string>>(new Set());
@@ -137,6 +138,10 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
   const [dateMatch, setDateMatch] = useState<string>("all");
   const [gapsOnly, setGapsOnly] = useState<boolean>(false);
 
+  const yearOptions = useMemo(
+    () => uniqueSorted(accounts.map((a) => (a.renewalYear ? String(a.renewalYear) : null))),
+    [accounts],
+  );
   const stateOptions = useMemo(() => uniqueSorted(accounts.map((a) => a.state)), [accounts]);
   const csmOptions = useMemo(() => uniqueSorted(accounts.map((a) => a.csm)), [accounts]);
   const productOptions = useMemo(
@@ -150,6 +155,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
 
   const filtersDirty =
     search.trim() !== "" ||
+    years.size > 0 ||
     months.size > 0 ||
     states.size > 0 ||
     csms.size > 0 ||
@@ -160,6 +166,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
 
   function resetFilters() {
     setSearch("");
+    setYears(new Set());
     setMonths(new Set());
     setStates(new Set());
     setCsms(new Set());
@@ -175,6 +182,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
     const searchLc = search.trim().toLowerCase();
     return accounts.filter((a) => {
       if (searchLc && !a.companyName.toLowerCase().includes(searchLc)) return false;
+      if (years.size > 0 && !years.has(a.renewalYear ? String(a.renewalYear) : "")) return false;
       if (months.size > 0 && !months.has(String(a.renewalMonth ?? ""))) return false;
       if (states.size > 0 && !states.has(a.state ?? "")) return false;
       if (csms.size > 0 && !csms.has(a.csm ?? "")) return false;
@@ -190,28 +198,28 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
       }
       return true;
     });
-  }, [accounts, search, months, states, csms, product, productMode, dealStages, dateMatch, gapsOnly]);
+  }, [accounts, search, years, months, states, csms, product, productMode, dealStages, dateMatch, gapsOnly]);
 
   const totals = useMemo(() => {
-    const total = accounts.length;
-    const totalArr = accounts.reduce((s, a) => s + a.arr, 0);
-    const covered = accounts.filter((a) => a.status === "covered").length;
-    const gaps = accounts.filter((a) => a.status === "gap").length;
-    const arrAtRisk = accounts
+    const total = filtered.length;
+    const totalArr = filtered.reduce((s, a) => s + a.arr, 0);
+    const covered = filtered.filter((a) => a.status === "covered").length;
+    const gaps = filtered.filter((a) => a.status === "gap").length;
+    const arrAtRisk = filtered
       .filter((a) => a.status === "gap")
       .reduce((s, a) => s + a.arr, 0);
     return { total, totalArr, covered, gaps, arrAtRisk };
-  }, [accounts]);
+  }, [filtered]);
 
   return (
     <main className="max-w-7xl mx-auto px-6 py-8 space-y-6">
       <header className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-            2026 Renewals
+            Renewals
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {totals.total.toLocaleString()} accounts ·{" "}
+            {totals.total.toLocaleString()} of {accounts.length.toLocaleString()} accounts ·{" "}
             {fmtUsdCompact(totals.totalArr)} ARR
           </p>
         </div>
@@ -220,7 +228,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
             type="button"
             onClick={() => {
               const today = new Date().toISOString().slice(0, 10);
-              downloadCsv(`renewals-2026-${today}.csv`, buildCsv(filtered));
+              downloadCsv(`renewals-${today}.csv`, buildCsv(filtered));
             }}
             disabled={filtered.length === 0}
             className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
@@ -247,8 +255,8 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
       </header>
 
       <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <StatCard label="Total accounts" value={totals.total.toLocaleString()} />
-        <StatCard label="2026 ARR" value={fmtUsdCompact(totals.totalArr)} />
+        <StatCard label="Accounts" value={totals.total.toLocaleString()} />
+        <StatCard label="Total ARR" value={fmtUsdCompact(totals.totalArr)} />
         <StatCard label="Covered" value={totals.covered.toLocaleString()} tone="green" />
         <StatCard label="Gaps" value={totals.gaps.toLocaleString()} tone="red" />
         <StatCard label="ARR at risk" value={fmtUsdCompact(totals.arrAtRisk)} tone="red" />
@@ -290,6 +298,12 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
           )}
         </div>
         <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+          <MultiSelectField
+            label="Year"
+            options={yearOptions}
+            selected={years}
+            onChange={setYears}
+          />
           <MultiSelectField
             label="Month"
             options={MONTHS.map((_, i) => String(i + 1))}
