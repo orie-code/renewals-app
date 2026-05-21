@@ -33,24 +33,68 @@ function uniqueSorted(values: (string | null | undefined)[]): string[] {
   return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
 
+// Split a comma/plus/slash/&/"and"-separated product list into individual tokens.
+function parseProducts(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/\s*(?:,|\+|\/|&|\band\b)\s*/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+function fmtDateShort(iso: string | null): string {
+  if (!iso) return "—";
+  // YYYY-MM-DD → MMM D, YYYY (UTC, to avoid TZ shifting the day)
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] }) {
   const [month, setMonth] = useState<string>("all");
-  const [csm, setCsm] = useState<string>("all");
+  const [csms, setCsms] = useState<Set<string>>(new Set());
   const [ae, setAe] = useState<string>("all");
+  const [product, setProduct] = useState<string>("all");
+  const [productMode, setProductMode] = useState<"include" | "exclude">("include");
+  const [dealStage, setDealStage] = useState<string>("all");
+  const [dateMatch, setDateMatch] = useState<string>("all");
   const [gapsOnly, setGapsOnly] = useState<boolean>(false);
 
   const csmOptions = useMemo(() => uniqueSorted(accounts.map((a) => a.csm)), [accounts]);
   const aeOptions = useMemo(() => uniqueSorted(accounts.map((a) => a.ae)), [accounts]);
+  const productOptions = useMemo(
+    () => uniqueSorted(accounts.flatMap((a) => parseProducts(a.activeProducts))),
+    [accounts],
+  );
+  const dealStageOptions = useMemo(
+    () => uniqueSorted(accounts.map((a) => a.matchedDealStage)),
+    [accounts],
+  );
 
   const filtered = useMemo(() => {
+    const productLc = product.toLowerCase();
     return accounts.filter((a) => {
       if (month !== "all" && String(a.renewalMonth ?? "") !== month) return false;
-      if (csm !== "all" && (a.csm ?? "") !== csm) return false;
+      if (csms.size > 0 && !csms.has(a.csm ?? "")) return false;
       if (ae !== "all" && (a.ae ?? "") !== ae) return false;
       if (gapsOnly && a.status !== "gap") return false;
+      if (dealStage !== "all" && (a.matchedDealStage ?? "") !== dealStage) return false;
+      if (dateMatch !== "all" && a.renewalDateMatch !== dateMatch) return false;
+      if (product !== "all") {
+        const has = parseProducts(a.activeProducts).some(
+          (p) => p.toLowerCase() === productLc,
+        );
+        if (productMode === "include" && !has) return false;
+        if (productMode === "exclude" && has) return false;
+      }
       return true;
     });
-  }, [accounts, month, csm, ae, gapsOnly]);
+  }, [accounts, month, csms, ae, product, productMode, dealStage, dateMatch, gapsOnly]);
 
   const totals = useMemo(() => {
     const total = accounts.length;
@@ -96,16 +140,12 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
             ))}
           </select>
         </Field>
-        <Field label="CSM">
-          <select
-            value={csm}
-            onChange={(e) => setCsm(e.target.value)}
-            className="border border-gray-300 rounded px-2 py-1 text-sm"
-          >
-            <option value="all">All</option>
-            {csmOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </Field>
+        <MultiSelectField
+          label="CSM"
+          options={csmOptions}
+          selected={csms}
+          onChange={setCsms}
+        />
         <Field label="AE">
           <select
             value={ae}
@@ -114,6 +154,54 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
           >
             <option value="all">All</option>
             {aeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+        <Field label="Product">
+          <div className="flex items-center gap-1">
+            <select
+              value={productMode}
+              onChange={(e) => setProductMode(e.target.value as "include" | "exclude")}
+              disabled={product === "all"}
+              className="border border-gray-300 rounded px-2 py-1 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+            >
+              <option value="include">includes</option>
+              <option value="exclude">excludes</option>
+            </select>
+            <select
+              value={product}
+              onChange={(e) => setProduct(e.target.value)}
+              className="border border-gray-300 rounded px-2 py-1 text-sm"
+            >
+              <option value="all">Any</option>
+              {productOptions.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+        </Field>
+        <Field label="Deal stage">
+          <select
+            value={dealStage}
+            onChange={(e) => setDealStage(e.target.value)}
+            className="border border-gray-300 rounded px-2 py-1 text-sm"
+          >
+            <option value="all">All</option>
+            {dealStageOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Date match">
+          <select
+            value={dateMatch}
+            onChange={(e) => setDateMatch(e.target.value)}
+            className="border border-gray-300 rounded px-2 py-1 text-sm"
+          >
+            <option value="all">Any</option>
+            <option value="match">Match</option>
+            <option value="mismatch">Mismatch</option>
+            <option value="missing">Deal missing date</option>
+            <option value="na">No deal</option>
           </select>
         </Field>
         <label className="flex items-center gap-2 text-sm ml-auto">
@@ -135,7 +223,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
               <Th className="text-right">ARR</Th>
               <Th>State</Th>
               <Th>CSM</Th>
-              <Th>AE</Th>
+              <Th>Renewal date OK?</Th>
               <Th>Active products</Th>
               <Th>Sign off</Th>
               <Th>Deal stage</Th>
@@ -163,7 +251,7 @@ export default function RenewalsView({ accounts }: { accounts: RenewalAccount[] 
                 <Td className="text-right">{fmtUsd(a.arr)}</Td>
                 <Td>{a.state ?? "—"}</Td>
                 <Td>{a.csm ?? "—"}</Td>
-                <Td>{a.ae ?? "—"}</Td>
+                <Td><RenewalDateMatchCell account={a} /></Td>
                 <Td>{a.activeProducts ?? "—"}</Td>
                 <Td>{a.planYearSignOff ?? "—"}</Td>
                 <Td>
@@ -262,6 +350,81 @@ function StatCard({
   );
 }
 
+function MultiSelectField({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  const summary =
+    selected.size === 0
+      ? "All"
+      : selected.size === 1
+        ? Array.from(selected)[0]
+        : `${selected.size} selected`;
+  return (
+    <div className="flex flex-col gap-1 text-xs text-gray-600">
+      <span>{label}</span>
+      <details className="relative">
+        <summary className="list-none cursor-pointer border border-gray-300 rounded px-2 py-1 text-sm bg-white min-w-[140px] flex items-center justify-between gap-2">
+          <span className="truncate">{summary}</span>
+          <span className="text-gray-400">▾</span>
+        </summary>
+        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-md p-2 z-10 max-h-64 overflow-auto min-w-[200px]">
+          {options.length === 0 ? (
+            <div className="text-xs text-gray-500 px-1">No options</div>
+          ) : (
+            <>
+              <div className="flex justify-between text-xs text-blue-600 px-1 pb-1 mb-1 border-b border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => onChange(new Set(options))}
+                  className="hover:underline"
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChange(new Set())}
+                  className="hover:underline"
+                >
+                  Clear
+                </button>
+              </div>
+              {options.map((opt) => {
+                const checked = selected.has(opt);
+                return (
+                  <label
+                    key={opt}
+                    className="flex items-center gap-2 text-sm py-0.5 px-1 cursor-pointer hover:bg-gray-50 rounded"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        const next = new Set(selected);
+                        if (checked) next.delete(opt);
+                        else next.add(opt);
+                        onChange(next);
+                      }}
+                    />
+                    <span className="truncate">{opt}</span>
+                  </label>
+                );
+              })}
+            </>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-xs text-gray-600">
@@ -277,4 +440,39 @@ function Th({ children, className = "" }: { children: React.ReactNode; className
 
 function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <td className={`px-3 py-2 align-top ${className}`}>{children}</td>;
+}
+
+function RenewalDateMatchCell({ account: a }: { account: RenewalAccount }) {
+  if (a.renewalDateMatch === "na") {
+    return <span className="text-gray-400">—</span>;
+  }
+  if (a.renewalDateMatch === "match") {
+    return (
+      <span
+        title={`HubSpot: ${fmtDateShort(a.matchedDealRenewalDate)} · Metabase: ${fmtDateShort(a.renewalDate)}`}
+        className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800"
+      >
+        ✓ match
+      </span>
+    );
+  }
+  if (a.renewalDateMatch === "missing") {
+    return (
+      <span
+        title={`HubSpot deal has no Renewal Date. Metabase: ${fmtDateShort(a.renewalDate)}`}
+        className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800"
+      >
+        deal missing date
+      </span>
+    );
+  }
+  // mismatch
+  return (
+    <span
+      title={`HubSpot: ${fmtDateShort(a.matchedDealRenewalDate)} · Metabase: ${fmtDateShort(a.renewalDate)}`}
+      className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800"
+    >
+      ✗ {fmtDateShort(a.matchedDealRenewalDate)}
+    </span>
+  );
 }

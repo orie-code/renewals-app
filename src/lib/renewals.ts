@@ -30,6 +30,8 @@ export type RenewalAccount = {
   matchedDealId: string | null;
   matchedDealName: string | null;
   matchedDealStage: string | null;
+  matchedDealRenewalDate: string | null; // ISO YYYY-MM-DD
+  renewalDateMatch: "match" | "mismatch" | "missing" | "na";
 };
 
 const norm = (s: string | null | undefined) =>
@@ -200,6 +202,14 @@ export async function loadRenewals(
       matchedDealId: deal?.id ?? null,
       matchedDealName: deal?.name ?? null,
       matchedDealStage: deal?.stageLabel ?? null,
+      matchedDealRenewalDate: deal?.renewalDate ?? null,
+      renewalDateMatch: !deal
+        ? "na"
+        : !deal.renewalDate
+          ? "missing"
+          : m.renewalDate && m.renewalDate === deal.renewalDate
+            ? "match"
+            : "mismatch",
     });
   }
 

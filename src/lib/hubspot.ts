@@ -44,6 +44,23 @@ async function hsFetch(path: string, init: RequestInit = {}): Promise<Response> 
 // so we don't trip the secondly limit even before the retry path kicks in.
 const SEARCH_PAGE_DELAY_MS = 300;
 
+// HubSpot date-only properties come back as either an ISO `YYYY-MM-DD` string
+// or a Unix epoch-millis string (midnight UTC).
+function parseHubspotDate(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const ms = Number(s);
+  if (Number.isFinite(ms)) {
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return null;
+}
+
 // --- Pipelines ---
 
 type PipelineStage = { id: string; label: string; displayOrder?: number };
@@ -88,6 +105,7 @@ export type RenewalDeal = {
   ownerId: string | null;
   companyId: string | null;
   companyName: string | null;
+  renewalDate: string | null; // ISO YYYY-MM-DD, parsed from HubSpot's renewal_date property
 };
 
 type DealSearchResult = {
@@ -123,7 +141,13 @@ export async function fetchRenewal2026Deals(
           ],
         },
       ],
-      properties: ["dealname", "dealstage", "hubspot_owner_id", "pipeline"],
+      properties: [
+        "dealname",
+        "dealstage",
+        "hubspot_owner_id",
+        "pipeline",
+        "renewal_date",
+      ],
       limit: 100,
       after,
     };
@@ -148,6 +172,7 @@ export async function fetchRenewal2026Deals(
         ownerId: d.properties.hubspot_owner_id ?? null,
         companyId: null,
         companyName: null,
+        renewalDate: parseHubspotDate(d.properties.renewal_date),
       });
     }
 
