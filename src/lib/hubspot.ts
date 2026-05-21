@@ -124,65 +124,82 @@ type DealSearchResult = {
 export async function fetchRenewal2026Deals(
   pipeline: RenewalPipeline,
 ): Promise<RenewalDeal[]> {
-  const deals: RenewalDeal[] = [];
-  let after: string | undefined;
+  // We pull deals in the Renewal Pipeline that match 2026 by EITHER:
+  //   (a) name contains "2026 renewal", or
+  //   (b) renewal_date falls in calendar year 2026.
+  // (b) catches deals like Oceanwide where the name still says "2025" but
+  // the renewal_date has been moved into 2026.
+  const dealsById = new Map<string, RenewalDeal>();
 
-  while (true) {
-    const body = {
-      filterGroups: [
-        {
-          filters: [
-            { propertyName: "pipeline", operator: "EQ", value: pipeline.id },
-            {
-              propertyName: "dealname",
-              operator: "CONTAINS_TOKEN",
-              value: "2026 renewal",
-            },
-          ],
-        },
-      ],
-      properties: [
-        "dealname",
-        "dealstage",
-        "hubspot_owner_id",
-        "pipeline",
-        "renewal_date",
-      ],
-      limit: 100,
-      after,
-    };
-    const res = await hsFetch("/crm/v3/objects/deals/search", {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    const json = (await res.json()) as DealSearchResult;
-
-    // CONTAINS_TOKEN matches whole tokens, not substrings, so this is
-    // case-insensitive on the words "2026" and "renewal". Double-check
-    // case-insensitively to be safe.
-    for (const d of json.results) {
-      const name = d.properties.dealname ?? "";
-      if (!name.toLowerCase().includes("2026 renewal")) continue;
-      const stageId = d.properties.dealstage ?? "";
-      deals.push({
-        id: d.id,
-        name,
-        stageId,
-        stageLabel: pipeline.stageLabels.get(stageId) ?? stageId,
-        ownerId: d.properties.hubspot_owner_id ?? null,
-        companyId: null,
-        companyName: null,
-        renewalDate: parseHubspotDate(d.properties.renewal_date),
+  const collect = async (extraFilter: Record<string, unknown>) => {
+    let after: string | undefined;
+    while (true) {
+      const body = {
+        filterGroups: [
+          {
+            filters: [
+              { propertyName: "pipeline", operator: "EQ", value: pipeline.id },
+              extraFilter,
+            ],
+          },
+        ],
+        properties: [
+          "dealname",
+          "dealstage",
+          "hubspot_owner_id",
+          "pipeline",
+          "renewal_date",
+        ],
+        limit: 100,
+        after,
+      };
+      const res = await hsFetch("/crm/v3/objects/deals/search", {
+        method: "POST",
+        body: JSON.stringify(body),
       });
-    }
+      const json = (await res.json()) as DealSearchResult;
 
-    if (json.paging?.next?.after) {
-      after = json.paging.next.after;
-      await sleep(SEARCH_PAGE_DELAY_MS);
-    } else {
-      break;
+      for (const d of json.results) {
+        if (dealsById.has(d.id)) continue;
+        const name = d.properties.dealname ?? "";
+        const stageId = d.properties.dealstage ?? "";
+        dealsById.set(d.id, {
+          id: d.id,
+          name,
+          stageId,
+          stageLabel: pipeline.stageLabels.get(stageId) ?? stageId,
+          ownerId: d.properties.hubspot_owner_id ?? null,
+          companyId: null,
+          companyName: null,
+          renewalDate: parseHubspotDate(d.properties.renewal_date),
+        });
+      }
+
+      if (json.paging?.next?.after) {
+        after = json.paging.next.after;
+        await sleep(SEARCH_PAGE_DELAY_MS);
+      } else {
+        break;
+      }
     }
-  }
+  };
+
+  await collect({
+    propertyName: "dealname",
+    operator: "CONTAINS_TOKEN",
+    value: "2026 renewal",
+  });
+  // HubSpot date properties in search filters take epoch ms at UTC midnight.
+  const jan1_2026 = Date.UTC(2026, 0, 1);
+  const dec31_2026 = Date.UTC(2026, 11, 31);
+  await collect({
+    propertyName: "renewal_date",
+    operator: "BETWEEN",
+    value: String(jan1_2026),
+    highValue: String(dec31_2026),
+  });
+
+  const deals = Array.from(dealsById.values());
 
   // Associated company per deal (batch read)
   if (deals.length > 0) {
