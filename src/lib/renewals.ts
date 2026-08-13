@@ -178,7 +178,7 @@ export async function loadRenewals(
   const companyByCb = new Map<string, HubspotCompany>();
   const companyByName = new Map<string, HubspotCompany>();
   for (const c of companies) {
-    companyByCb.set(c.vitable_chargebee_customer_id, c);
+    companyByCb.set(c.vitable__chargebee_customer_id, c);
     if (c.name) companyByName.set(norm(c.name), c);
   }
 

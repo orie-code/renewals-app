@@ -282,7 +282,7 @@ async function batchReadCompanyNames(
 export type HubspotCompany = {
   hs_object_id: string;
   name: string;
-  vitable_chargebee_customer_id: string;
+  vitable__chargebee_customer_id: string;
   success_owner: string | null;
   account_executive: string | null;
   hubspot_owner_id: string | null;
@@ -293,7 +293,7 @@ export async function fetchCompaniesWithChargebeeId(): Promise<HubspotCompany[]>
   let after: string | undefined;
   const props = [
     "name",
-    "vitable_chargebee_customer_id",
+    "vitable__chargebee_customer_id",
     "success_owner",
     "account_executive",
     "hubspot_owner_id",
@@ -305,7 +305,7 @@ export async function fetchCompaniesWithChargebeeId(): Promise<HubspotCompany[]>
         {
           filters: [
             {
-              propertyName: "vitable_chargebee_customer_id",
+              propertyName: "vitable__chargebee_customer_id",
               operator: "HAS_PROPERTY",
             },
           ],
@@ -325,12 +325,12 @@ export async function fetchCompaniesWithChargebeeId(): Promise<HubspotCompany[]>
     };
 
     for (const c of json.results) {
-      const cbId = c.properties.vitable_chargebee_customer_id;
+      const cbId = c.properties.vitable__chargebee_customer_id;
       if (!cbId) continue;
       companies.push({
         hs_object_id: c.id,
         name: c.properties.name ?? "",
-        vitable_chargebee_customer_id: cbId,
+        vitable__chargebee_customer_id: cbId,
         success_owner: c.properties.success_owner ?? null,
         account_executive: c.properties.account_executive ?? null,
         hubspot_owner_id: c.properties.hubspot_owner_id ?? null,
