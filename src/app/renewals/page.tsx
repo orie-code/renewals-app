@@ -2,6 +2,8 @@ import { loadRenewals } from "@/lib/renewals";
 import RenewalsView from "./RenewalsView";
 
 export const dynamic = "force-dynamic";
+// Vercel: allow up to 60s — the cross-referenced fetch exceeds the 10s default.
+export const maxDuration = 60;
 
 export default async function RenewalsPage({
   searchParams,

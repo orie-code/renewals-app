@@ -3,6 +3,8 @@ import { fetchOnboardingBoard } from "@/lib/onboarding";
 import OnboardingView from "./OnboardingView";
 
 export const dynamic = "force-dynamic";
+// Vercel: allow up to 60s — the cross-referenced fetch exceeds the 10s default.
+export const maxDuration = 60;
 
 const TTL_MS = 10 * 60 * 1000;
 
