@@ -135,20 +135,23 @@ async function batchRead(
 
 async function fetchOwners(): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  let after: string | undefined;
-  while (true) {
-    const json = (await hs(
-      `/crm/v3/owners?limit=100${after ? `&after=${after}` : ""}`,
-    )) as {
-      results?: { id: string; firstName?: string; lastName?: string; email?: string }[];
-      paging?: { next?: { after: string } };
-    };
-    for (const o of json.results ?? []) {
-      const name = `${o.firstName ?? ""} ${o.lastName ?? ""}`.trim() || (o.email ?? "");
-      out.set(String(o.id), name);
+  // Deactivated owners still appear in CSM fields; include archived=true.
+  for (const archived of [false, true]) {
+    let after: string | undefined;
+    while (true) {
+      const json = (await hs(
+        `/crm/v3/owners?limit=100&archived=${archived}${after ? `&after=${after}` : ""}`,
+      )) as {
+        results?: { id: string; firstName?: string; lastName?: string; email?: string }[];
+        paging?: { next?: { after: string } };
+      };
+      for (const o of json.results ?? []) {
+        const name = `${o.firstName ?? ""} ${o.lastName ?? ""}`.trim() || (o.email ?? "");
+        if (!out.has(String(o.id))) out.set(String(o.id), archived ? `${name} (inactive)` : name);
+      }
+      after = json.paging?.next?.after;
+      if (!after) break;
     }
-    after = json.paging?.next?.after;
-    if (!after) break;
   }
   return out;
 }
@@ -416,7 +419,7 @@ export async function fetchOnboardingBoard(): Promise<OnboardingBoard> {
   const companyIds = Array.from(new Set(Array.from(assoc.values()).flat()));
   const [whByCompany, companyProps] = await Promise.all([
     fetchWarehouse(companyIds),
-    batchRead("companies", companyIds, ["name", "success_owner"]),
+    batchRead("companies", companyIds, ["name", "success_owner__owner_"]),
   ]);
 
   const cutoffDate = new Date();
@@ -465,16 +468,15 @@ export async function fetchOnboardingBoard(): Promise<OnboardingBoard> {
       cids.map((c) => companyProps.get(c)?.name).find(Boolean) ??
       (fallbackName || (p.dealname ?? ""));
 
-    // CSM comes from the COMPANY (warehouse CSM, else the company's
-    // success_owner resolved to a name) — never from the deal owner.
+    // CSM = the company's "CSM Owner" (success_owner__owner_, the 2026 source
+    // of truth) resolved to a name — never the deal owner, the warehouse CSM,
+    // or the deprecated "Archive CS Owner" (success_owner) property.
     const successOwnerRaw = cids
-      .map((c) => companyProps.get(c)?.success_owner)
+      .map((c) => companyProps.get(c)?.success_owner__owner_)
       .find(Boolean);
-    const csm =
-      (wh?.customer_success_manager as string | undefined) ||
-      (successOwnerRaw
-        ? owners.get(String(successOwnerRaw)) ?? String(successOwnerRaw)
-        : "");
+    const csm = successOwnerRaw
+      ? owners.get(String(successOwnerRaw)) ?? String(successOwnerRaw)
+      : "";
 
     clients.push({
       dealId: String(deal.id),
