@@ -202,7 +202,7 @@ function deriveCallState(meetings: Meeting[]): { scheduled: boolean; held: boole
 
 const WAREHOUSE_SQL = (quotedIds: string) => `
 SELECT c.hubspot_company_id, c.company_id, c.company_name, c.company_status,
-       c.account_executive,
+       c.account_executive, c.customer_success_manager,
        c.future_benefit_codes, c.active_benefit_codes,
        c.last_employee_census_upload_date,
        c.has_active_eligibility_policy,
@@ -414,9 +414,9 @@ export async function fetchOnboardingBoard(): Promise<OnboardingBoard> {
   ]);
 
   const companyIds = Array.from(new Set(Array.from(assoc.values()).flat()));
-  const [whByCompany, companyNames] = await Promise.all([
+  const [whByCompany, companyProps] = await Promise.all([
     fetchWarehouse(companyIds),
-    batchRead("companies", companyIds, ["name"]),
+    batchRead("companies", companyIds, ["name", "success_owner"]),
   ]);
 
   const cutoffDate = new Date();
@@ -462,8 +462,19 @@ export async function fetchOnboardingBoard(): Promise<OnboardingBoard> {
       .trim();
     const name =
       (wh?.company_name as string | undefined) ??
-      cids.map((c) => companyNames.get(c)?.name).find(Boolean) ??
+      cids.map((c) => companyProps.get(c)?.name).find(Boolean) ??
       (fallbackName || (p.dealname ?? ""));
+
+    // CSM comes from the COMPANY (warehouse CSM, else the company's
+    // success_owner resolved to a name) — never from the deal owner.
+    const successOwnerRaw = cids
+      .map((c) => companyProps.get(c)?.success_owner)
+      .find(Boolean);
+    const csm =
+      (wh?.customer_success_manager as string | undefined) ||
+      (successOwnerRaw
+        ? owners.get(String(successOwnerRaw)) ?? String(successOwnerRaw)
+        : "");
 
     clients.push({
       dealId: String(deal.id),
@@ -477,7 +488,7 @@ export async function fetchOnboardingBoard(): Promise<OnboardingBoard> {
         dateStr(wh?.closest_upcoming_open_enrollment_start_date) ||
         null,
       coverageDate: dateStr(wh?.closest_upcoming_coverage_start_date) || null,
-      owner: owners.get(p.hubspot_owner_id ?? "") ?? "",
+      owner: csm,
       ae: (wh?.account_executive as string | undefined) ?? "",
       ...ev,
     });
