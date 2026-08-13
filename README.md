@@ -39,6 +39,17 @@ A Next.js app at `/renewals` that joins Metabase card `3042` (renewal accounts) 
 
 > Caches are in-memory per Lambda instance, so the first request after a cold start refetches; subsequent requests within 10 minutes on the same instance hit the cache.
 
+## Onboarding board
+
+`/onboarding` shows every client in the HubSpot Onboarding Pipeline's pre-OE stages
+(Intake, In Progress, Ready for kickoff, Blocked) with the steps that still block
+open enrollment: welcome call scheduled/held (from meeting engagements), ops
+plan-year sign-off, eligibility policy, census import (Metabase warehouse), and for
+ICHRA clients contribution classes + Moov bank fields (HubSpot deal properties).
+Renewal deals waive the call and bank steps. Cohort = start date within the past 90
+days or upcoming (warehouse plan years first, HubSpot Contracted Start fallback).
+Data is cached 10 minutes; append `?refresh=1` to force a refetch.
+
 ## HubSpot private-app scopes
 
 Enable these on the private app whose token you paste into `HUBSPOT_PRIVATE_APP_TOKEN`:

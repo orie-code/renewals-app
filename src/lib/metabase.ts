@@ -63,6 +63,42 @@ async function metabaseFetch(
 
 export type MetabaseRow = Record<string, unknown>;
 
+// Run a raw native SQL query against a database (same shape as /api/dataset).
+// Keys are the raw column names (not display names).
+export async function queryNative(
+  databaseId: number,
+  sql: string,
+): Promise<MetabaseRow[]> {
+  const res = await metabaseFetch(`/api/dataset`, {
+    method: "POST",
+    body: JSON.stringify({
+      database: databaseId,
+      type: "native",
+      native: { query: sql },
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Metabase native query failed (${res.status}): ${body}`);
+  }
+  const json = (await res.json()) as {
+    status?: string;
+    error?: string;
+    data: { rows: unknown[][]; cols: { name: string }[] };
+  };
+  if (json.status === "failed") {
+    throw new Error(`Metabase native query failed: ${json.error}`);
+  }
+  const { rows, cols } = json.data;
+  return rows.map((row) => {
+    const obj: MetabaseRow = {};
+    cols.forEach((col, i) => {
+      obj[col.name] = row[i];
+    });
+    return obj;
+  });
+}
+
 export async function queryCard(cardId: number): Promise<MetabaseRow[]> {
   const res = await metabaseFetch(`/api/card/${cardId}/query`, {
     method: "POST",
